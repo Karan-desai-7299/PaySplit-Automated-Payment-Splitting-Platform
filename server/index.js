@@ -77,17 +77,29 @@ async function startServer() {
   try {
     await connectDB();
     await seedDatabase();
-    app.listen(PORT, () => {
-      console.log(`=================================================`);
-      console.log(`🚀 UPI QR Payment Server running on port ${PORT}`);
-      console.log(`🌐 Base URL: http://localhost:${PORT}`);
-      console.log(`⚡ Health:   http://localhost:${PORT}/health`);
-      console.log(`=================================================`);
-    });
+    if (!process.env.VERCEL) {
+      app.listen(PORT, () => {
+        console.log(`=================================================`);
+        console.log(`🚀 UPI QR Payment Server running on port ${PORT}`);
+        console.log(`🌐 Base URL: http://localhost:${PORT}`);
+        console.log(`⚡ Health:   http://localhost:${PORT}/health`);
+        console.log(`=================================================`);
+      });
+    }
   } catch (error) {
     console.error('Fatal: Failed to start server:', error);
-    process.exit(1);
+    if (!process.env.VERCEL) {
+      process.exit(1);
+    }
   }
 }
 
-startServer();
+// In standard Node.js environment, launch listener
+if (!process.env.VERCEL) {
+  startServer();
+} else {
+  // In Vercel serverless environment, connect DB on load
+  connectDB().catch((err) => console.error('Vercel DB init error:', err));
+}
+
+export default app;

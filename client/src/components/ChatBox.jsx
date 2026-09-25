@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, User, Shield, Check, Clock, MessageSquare, RefreshCw } from 'lucide-react';
-import { api, getToken } from '../api';
+import { api, getToken, API_BASE } from '../api';
 
 export default function ChatBox({ currentUser, targetVendorId, targetVendorName, isMobile = false }) {
   const [messages, setMessages] = useState([]);
@@ -40,32 +40,40 @@ export default function ChatBox({ currentUser, targetVendorId, targetVendorName,
     const token = getToken();
     if (!token) return;
 
-    const url = `/api/chat/stream?token=${token}`;
-    const es = new EventSource(url);
-    esRef.current = es;
+    const streamBase = API_BASE.startsWith('http') ? API_BASE : `${window.location.origin}${API_BASE}`;
+    const url = `${streamBase}/chat/stream?token=${token}`;
+    let es = null;
+    try {
+      es = new EventSource(url);
+      esRef.current = es;
 
-    es.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'NEW_CHAT_MESSAGE' && data.message) {
-          const msg = data.message;
-          // If vendor, accept any message for their vendorId
-          // If admin, accept if it matches the current active targetVendorId
-          if (!isAdmin && msg.vendorId === currentUser?.vendorId) {
-            setMessages((prev) => [...prev, msg]);
-            setTimeout(scrollToBottom, 100);
-          } else if (isAdmin && msg.vendorId === targetVendorId) {
-            setMessages((prev) => [...prev, msg]);
-            setTimeout(scrollToBottom, 100);
+      es.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'NEW_CHAT_MESSAGE' && data.message) {
+            const msg = data.message;
+            if (!isAdmin && msg.vendorId === currentUser?.vendorId) {
+              setMessages((prev) => [...prev, msg]);
+              setTimeout(scrollToBottom, 100);
+            } else if (isAdmin && msg.vendorId === targetVendorId) {
+              setMessages((prev) => [...prev, msg]);
+              setTimeout(scrollToBottom, 100);
+            }
           }
+        } catch (err) {
+          console.error('SSE chat parse error', err);
         }
-      } catch (e) {
-        console.error('SSE chat parse error', e);
-      }
-    };
+      };
+
+      es.onerror = () => {
+        // SSE error handler
+      };
+    } catch (e) {
+      console.warn('Chat SSE setup error', e);
+    }
 
     return () => {
-      es.close();
+      if (es) es.close();
       esRef.current = null;
     };
   }, [isAdmin, targetVendorId, currentUser?.vendorId]);

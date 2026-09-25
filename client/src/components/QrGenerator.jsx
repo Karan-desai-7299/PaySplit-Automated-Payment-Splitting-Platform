@@ -20,8 +20,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import QRCode from 'qrcode';
-import { api, getToken } from '../api';
+import { api, getToken, API_BASE } from '../api';
 
 /* ─── Pleasant Soundbox Chime on Payment Verification ─────────────────────── */
 function playPaymentChime() {
@@ -265,72 +264,120 @@ function PayingScreen({ session: initialSession, customer, onDone, onNewBill }) 
   /* Open SSE connection — instant push from server */
   useEffect(() => {
     const token = getToken();
-    const url = `/api/vendor/stream/${initialSession.sessionId}?token=${token}`;
-    const es = new EventSource(url);
-    esRef.current = es;
+    const streamBase = API_BASE.startsWith('http') ? API_BASE : `${window.location.origin}${API_BASE}`;
+    const url = `${streamBase}/vendor/stream/${initialSession.sessionId}?token=${token}`;
+    let es = null;
+    try {
+      es = new EventSource(url);
+      esRef.current = es;
 
-    es.onopen = () => setConnected(true);
+      es.onopen = () => setConnected(true);
 
-    es.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
+      es.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
 
-        if (data.type === 'CONNECTED') {
-          setConnected(true);
-          return;
-        }
+          if (data.type === 'CONNECTED') {
+            setConnected(true);
+            return;
+          }
 
-        if (data.type === 'SLICE_PAID') {
-          playPaymentChime();
+          if (data.type === 'SLICE_PAID') {
+            playPaymentChime();
 
-          setSession((prev) => {
-            const updatedSlices = prev.slices.map((s) =>
-              s.sliceId === data.sliceId
-                ? { ...s, status: 'PAID', isPaid: true, bankRrn: data.bankRrn, paidAt: data.paidAt }
-                : s
-            );
+            setSession((prev) => {
+              const updatedSlices = prev.slices.map((s) =>
+                s.sliceId === data.sliceId
+                  ? { ...s, status: 'PAID', isPaid: true, bankRrn: data.bankRrn, paidAt: data.paidAt }
+                  : s
+              );
 
-            let firstPendingFound = false;
-            const enriched = updatedSlices.map((s) => {
-              const isPaid = s.status === 'PAID';
-              let isCurrentActive = false;
-              if (!firstPendingFound && !isPaid) {
-                isCurrentActive = true;
-                firstPendingFound = true;
-              }
-              return { ...s, isPaid, isUnlocked: true, isCurrentActive, isLocked: false };
+              let firstPendingFound = false;
+              const enriched = updatedSlices.map((s) => {
+                const isPaid = s.status === 'PAID';
+                let isCurrentActive = false;
+                if (!firstPendingFound && !isPaid) {
+                  isCurrentActive = true;
+                  firstPendingFound = true;
+                }
+                return { ...s, isPaid, isUnlocked: true, isCurrentActive, isLocked: false };
+              });
+
+              return {
+                ...prev,
+                slices: enriched,
+                amountPaid: data.amountPaid,
+                remainingAmount: data.remainingAmount,
+                completedSlices: data.completedSlices,
+                status: data.sessionStatus,
+              };
             });
 
+            if (data.isFullyComplete) {
+              setTimeout(() => {
+                onDone();
+              }, 2200);
+            }
+          }
+        } catch (e) {
+          console.error('SSE parse error', e);
+        }
+      };
+
+      es.onerror = () => {
+        setConnected(false);
+      };
+    } catch (e) {
+      console.warn('SSE connection failed, falling back to polling', e);
+    }
+
+    // Polling fallback every 2.5s for seamless reliability in serverless/mobile environments
+    const pollInterval = setInterval(async () => {
+      try {
+        const latest = await api.getPaymentSession(initialSession.sessionId);
+        if (latest && latest.session) {
+          const s = latest.session;
+          setSession((prev) => {
+            const hasNewPaid = s.slices.some((sl, idx) => sl.status === 'PAID' && !prev.slices[idx]?.isPaid);
+            if (hasNewPaid) {
+              playPaymentChime();
+            }
+            let firstPending = false;
+            const enriched = s.slices.map((sl) => {
+              const isPaid = sl.status === 'PAID';
+              let isCurrentActive = false;
+              if (!firstPending && !isPaid) {
+                isCurrentActive = true;
+                firstPending = true;
+              }
+              return { ...sl, isPaid, isUnlocked: true, isCurrentActive, isLocked: false };
+            });
             return {
               ...prev,
               slices: enriched,
-              amountPaid: data.amountPaid,
-              remainingAmount: data.remainingAmount,
-              completedSlices: data.completedSlices,
-              status: data.sessionStatus,
+              amountPaid: s.amountPaid,
+              remainingAmount: s.remainingAmount,
+              completedSlices: s.completedSlices,
+              status: s.status,
             };
           });
 
-          // When all QRs have green ticks, let vendor see all green ticks for 2.2 seconds,
-          // then show final one big green tick screen!
-          if (data.isFullyComplete) {
+          if (s.status === 'COMPLETED' || s.completedSlices === s.totalSlices) {
+            clearInterval(pollInterval);
             setTimeout(() => {
               onDone();
             }, 2200);
           }
         }
-      } catch (e) {
-        console.error('SSE parse error', e);
+      } catch (err) {
+        // silent polling error
       }
-    };
-
-    es.onerror = () => {
-      setConnected(false);
-    };
+    }, 2500);
 
     return () => {
-      es.close();
+      if (es) es.close();
       esRef.current = null;
+      clearInterval(pollInterval);
     };
   }, [initialSession.sessionId, onDone]);
 

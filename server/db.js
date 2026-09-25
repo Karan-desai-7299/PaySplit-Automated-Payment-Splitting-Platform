@@ -1,15 +1,28 @@
 import mongoose from 'mongoose';
 
+let cachedConn = null;
+let cachedPromise = null;
+
 export async function connectDB() {
-  const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/upi_qr_system';
-  try {
-    const conn = await mongoose.connect(mongoUri, {
-      serverSelectionTimeoutMS: 5000,
-    });
-    console.log(`[Database] MongoDB connected successfully to: ${conn.connection.host}`);
-    return conn;
-  } catch (error) {
-    console.error(`[Database] MongoDB connection error: ${error.message}`);
-    throw error;
+  if (cachedConn && mongoose.connection.readyState === 1) {
+    return cachedConn;
   }
+
+  const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/upi_qr_system';
+
+  if (!cachedPromise) {
+    cachedPromise = mongoose.connect(mongoUri, {
+      serverSelectionTimeoutMS: 5000,
+    }).then((conn) => {
+      cachedConn = conn;
+      console.log(`[Database] MongoDB connected successfully to: ${conn.connection.host}`);
+      return conn;
+    }).catch((err) => {
+      cachedPromise = null;
+      console.error(`[Database] MongoDB connection error: ${err.message}`);
+      throw err;
+    });
+  }
+
+  return cachedPromise;
 }
