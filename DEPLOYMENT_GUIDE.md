@@ -101,17 +101,65 @@ You can deploy the entire app as **one single web service**:
 
 ---
 
-### Option 3: Vercel (Frontend) + Render/Railway (Backend)
+### Option 1: Vercel (Deploy Both Frontend & Backend from One GitHub Repo)
 
-- **Frontend on Vercel**:
-  - Root directory: `client`
-  - Framework: `Vite`
-  - Environment variable: `VITE_API_BASE=https://your-backend-url.onrender.com/api`
-- **Backend on Render**:
-  - Root directory: `server`
-  - Build command: `npm install`
-  - Start command: `node index.js`
-  - Add your MongoDB Atlas URI & JWT secret.
+You can deploy **both Frontend and Backend as 2 connected projects** directly on Vercel using your GitHub repository:
+👉 `https://github.com/Karan-desai-7299/PaySplit-Automated-Payment-Splitting-Platform`
+
+#### Step A: Deploy the Backend on Vercel
+1. Go to **[vercel.com/new](https://vercel.com/new)** and import your GitHub repo `PaySplit-Automated-Payment-Splitting-Platform`.
+2. Configure Project:
+   - **Project Name**: `paysplit-backend`
+   - **Root Directory**: Click *Edit* and select **`server`**
+   - **Framework Preset**: `Other`
+3. Add **Environment Variables**:
+   - `MONGODB_URI`: `your_mongodb_atlas_connection_string`
+   - `JWT_SECRET`: `your_random_secret_key`
+   - `NODE_ENV`: `production`
+   *(You will add `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` here later after Razorpay generates them)*
+4. Click **Deploy**.
+5. Once deployed, copy your live backend URL (e.g., `https://paysplit-backend.vercel.app`).
+   Verify it by opening `https://paysplit-backend.vercel.app/health` in your browser.
+
+---
+
+#### Step B: Deploy the Frontend on Vercel
+1. Go to **[vercel.com/new](https://vercel.com/new)** again and import the same GitHub repo `PaySplit-Automated-Payment-Splitting-Platform`.
+2. Configure Project:
+   - **Project Name**: `paysplit-frontend`
+   - **Root Directory**: Click *Edit* and select **`client`**
+   - **Framework Preset**: `Vite`
+3. Add **Environment Variable**:
+   - `VITE_API_BASE`: `https://paysplit-backend.vercel.app/api` *(replace with your actual Step A backend URL)*
+4. Click **Deploy**.
+5. You will get your live frontend URL (e.g., **`https://paysplit-frontend.vercel.app`**)!
+
+---
+
+### 💳 Step C: Submit Live Frontend Link to Razorpay for API Keys
+
+1. Log in to your **[Razorpay Dashboard](https://dashboard.razorpay.com/)**.
+2. Go to **Account & Settings** → **Website & App Settings** / **Business Profile**.
+3. Under **Website URL**, enter your live frontend link:
+   👉 `https://paysplit-frontend.vercel.app`
+4. Razorpay will verify that your website has:
+   - ✅ Terms & Conditions (Already added in your footer!)
+   - ✅ Privacy Policy (Already added in your footer!)
+   - ✅ Refund & Cancellation Policy (Already added in your footer!)
+   - ✅ Contact Us with Owner Details (Karansinh Desai, `+91 88306 78600`, `karansinhdesai91@gmail.com`)
+5. Once submitted, toggle from **Test Mode** to **Live Mode** in Razorpay and generate your **Key ID** and **Key Secret**.
+
+---
+
+### ⚙️ Step D: Update `.env` in Vercel with Razorpay Keys
+
+1. In your Vercel Dashboard, go to your **`paysplit-backend`** project.
+2. Go to **Settings** → **Environment Variables**.
+3. Add your new keys:
+   - `RAZORPAY_KEY_ID`: `rzp_live_xxxxxxxx`
+   - `RAZORPAY_KEY_SECRET`: `your_razorpay_secret`
+4. Go to the **Deployments** tab and click **Redeploy** (so the new environment variables take effect).
+5. Done! Your entire automated payment splitting platform is now fully live with real Razorpay integration.
 
 ---
 
