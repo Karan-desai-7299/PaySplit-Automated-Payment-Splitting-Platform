@@ -68,6 +68,56 @@ router.post('/webhook/payment', simulatePaymentWebhook);
 // Check active gateway configuration
 router.get('/gateway/status', getGatewayStatusConfig);
 
+// Diagnostic endpoint to test Razorpay API response
+router.get('/test-razorpay', async (req, res) => {
+  const keyId = process.env.RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+  if (!keyId || !keySecret) {
+    return res.json({ error: 'Razorpay keys missing in environment' });
+  }
+
+  const authHeader = 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+  
+  // 1. Try QR codes API
+  let qrResult = null;
+  try {
+    const qrRes = await fetch('https://api.razorpay.com/v1/payments/qr_codes', {
+      method: 'POST',
+      headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'upi_qr',
+        name: 'Test PaySplit QR',
+        usage: 'single_use',
+        fixed_amount: true,
+        payment_amount: 100, // ₹1
+        description: 'Test payment',
+      }),
+    });
+    qrResult = { status: qrRes.status, data: await qrRes.json() };
+  } catch (e) {
+    qrResult = { error: e.message };
+  }
+
+  // 2. Try Payment Links API
+  let linkResult = null;
+  try {
+    const linkRes = await fetch('https://api.razorpay.com/v1/payment_links', {
+      method: 'POST',
+      headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        amount: 100,
+        currency: 'INR',
+        description: 'Test PaySplit Link',
+      }),
+    });
+    linkResult = { status: linkRes.status, data: await linkRes.json() };
+  } catch (e) {
+    linkResult = { error: e.message };
+  }
+
+  return res.json({ qrResult, linkResult });
+});
+
 // ─── Admin ────────────────────────────────────────────────────────────────────
 router.get('/admin/stats',          authenticateToken, requireRole('admin'), getAdminDashboardStats);
 router.get('/admin/vendors',        authenticateToken, requireRole('admin'), listVendors);
