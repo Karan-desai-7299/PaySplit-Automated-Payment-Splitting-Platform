@@ -204,6 +204,15 @@ function QrCard({ slice, sessionId, totalSlices }) {
             <p className="text-[11px] text-slate-500 font-bold mt-2">
               Scan with GPay, PhonePe, Paytm or Any UPI App
             </p>
+            {(() => {
+              const match = slice.upiString?.match(/pa=([^&]+)/);
+              const upiId = match ? decodeURIComponent(match[1]) : '';
+              return upiId ? (
+                <p className="text-[11px] font-mono text-slate-600 font-bold mt-1 bg-slate-100/80 px-2.5 py-0.5 rounded-md border border-slate-200/60 max-w-[220px] truncate">
+                  UPI: {upiId}
+                </p>
+              ) : null;
+            })()}
           </div>
         )}
 
@@ -221,7 +230,7 @@ function QrCard({ slice, sessionId, totalSlices }) {
           </p>
         </div>
 
-        {/* Real-Time Status Indicator (Vendor does NOT touch any buttons) */}
+        {/* Real-Time Status Indicator */}
         <div className="w-full mt-3">
           {slice.isPaid ? (
             <div className="text-xs text-emerald-700 font-bold flex items-center justify-center gap-1.5 py-2 bg-emerald-100/70 rounded-xl">
@@ -229,27 +238,23 @@ function QrCard({ slice, sessionId, totalSlices }) {
               <span>Payment Verified Successfully</span>
             </div>
           ) : (
-            <div className="flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-blue-50 border border-blue-100 text-blue-700 font-bold text-xs">
-              <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping" />
-              <span>Waiting for customer payment…</span>
+            <div className="space-y-2">
+              <div className="flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-blue-50 border border-blue-100 text-blue-700 font-bold text-xs">
+                <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping" />
+                <span>Waiting for customer payment…</span>
+              </div>
+              <button
+                onClick={handleSimulate}
+                disabled={simulating}
+                className="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm shadow-emerald-600/20 transition cursor-pointer"
+                title="Click when payment received to turn QR into green tick"
+              >
+                <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
+                <span>{simulating ? 'Confirming…' : 'Customer Paid? Show Green Tick ✓'}</span>
+              </button>
             </div>
           )}
         </div>
-
-        {/* Discreet Test Simulation link for testing without real money */}
-        {!slice.isPaid && (
-          <div className="mt-2 pt-1">
-            <button
-              onClick={handleSimulate}
-              disabled={simulating}
-              className="text-[10px] text-slate-400 hover:text-blue-600 font-medium flex items-center gap-1 mx-auto transition cursor-pointer"
-              title="Test simulation of automatic payment webhook"
-            >
-              <Zap className="w-2.5 h-2.5 text-amber-500" />
-              <span>{simulating ? 'Simulating webhook…' : 'Quick Test Webhook'}</span>
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

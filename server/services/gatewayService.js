@@ -50,64 +50,40 @@ export async function createSliceQrCode({
 }) {
   const active = getActiveGateway();
 
-  // ─── 1. RAZORPAY UPI DYNAMIC QR / PAYMENT LINK ──────────────────────────
-  if (active.type === 'RAZORPAY') {
-    try {
-      const authHeader =
-        'Basic ' +
-        Buffer.from(
-          `${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`
-        ).toString('base64');
+  // ─── 1. DIRECT STANDARD UPI QR (Vendor Respective UPI ID) ───────────────
+  // Native NPCI UPI deep link: encodes vendor.upiId so scanning with Google Pay,
+  // PhonePe, Paytm, BHIM, Cred opens the payment directly to the vendor's UPI ID.
+  const noteText = paymentNote
+    ? `${paymentNote} (${sliceIndex}/${totalSlices})`
+    : `Bill ${sessionId} Part ${sliceIndex}/${totalSlices}`;
 
-      const refId = `${sessionId.replace(/[^a-zA-Z0-9]/g, '')}_${sliceIndex}_${Date.now()}`.substring(0, 40);
+  const cleanUpiId = (vendor.upiId || '').trim();
+  const cleanPayee = (vendor.payeeName || vendor.businessName || vendor.username || 'Merchant').trim();
 
-      const payload = {
-        amount: Math.round(Number(amount) * 100), // in paise
-        currency: 'INR',
-        accept_partial: false,
-        description: `Bill ${sessionId} - QR ${sliceIndex} of ${totalSlices}`,
-        reference_id: refId,
-        notes: {
-          sessionId,
-          sliceId,
-          sliceIndex: String(sliceIndex),
-          transactionRef,
-        },
-        reminder_enable: false,
-      };
+  const params = new URLSearchParams({
+    pa: cleanUpiId,
+    pn: cleanPayee,
+    am: Number(amount).toFixed(2),
+    cu: 'INR',
+    tn: noteText,
+    tr: transactionRef,
+  });
 
-      const res = await fetch('https://api.razorpay.com/v1/payment_links', {
-        method: 'POST',
-        headers: {
-          Authorization: authHeader,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
+  const upiString = `upi://pay?${params.toString()}`;
+  const qrCodeDataUrl = await QRCode.toDataURL(upiString, {
+    width: 380,
+    margin: 2,
+    color: { dark: '#0f172a', light: '#ffffff' },
+  });
 
-      const data = await res.json();
-
-      if (res.ok && data.short_url) {
-        console.log(`[Razorpay PaymentLink] Created ${data.id} (${data.short_url}) for ₹${amount}`);
-        const qrCodeDataUrl = await QRCode.toDataURL(data.short_url, {
-          width: 380,
-          margin: 2,
-          color: { dark: '#0f172a', light: '#ffffff' },
-        });
-
-        return {
-          gateway: 'RAZORPAY',
-          gatewayQrId: data.id,
-          qrCodeDataUrl,
-          upiString: data.short_url,
-        };
-      } else {
-        console.error('[Razorpay PaymentLink Error] Response:', data);
-      }
-    } catch (err) {
-      console.error('[Razorpay PaymentLink Exception]:', err.message);
-    }
-  }
+  return {
+    gateway: 'DIRECT_UPI',
+    gatewayQrId: transactionRef,
+    qrCodeDataUrl,
+    upiString,
+    upiId: cleanUpiId,
+    payeeName: cleanPayee,
+  };
 
   // ─── 2. CASHFREE DYNAMIC QR ──────────────────────────────────────────────
   if (active.type === 'CASHFREE') {
