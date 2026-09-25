@@ -211,6 +211,33 @@ export async function getPaymentSession(req, res) {
     if (!session)
       return res.status(404).json({ error: 'Payment session not found.' });
 
+    // Auto-sync with Razorpay if pending slice has Razorpay link ID
+    if (session.status !== 'COMPLETED' && process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
+      const authHeader =
+        'Basic ' +
+        Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`).toString('base64');
+
+      for (const slice of session.slices) {
+        if (slice.status !== 'PAID' && slice.gatewayQrId && slice.gatewayQrId.startsWith('plink_')) {
+          try {
+            const checkRes = await fetch(`https://api.razorpay.com/v1/payment_links/${slice.gatewayQrId}`, {
+              headers: { Authorization: authHeader },
+            });
+            if (checkRes.ok) {
+              const linkData = await checkRes.json();
+              if (linkData.status === 'paid') {
+                const rrn = linkData.payments?.[0]?.payment_id || `RZP-${Date.now()}`;
+                await markSlicePaid(session, slice, rrn, 'Razorpay Dynamic UPI');
+                console.log(`[AutoSync] Verified paid slice ${slice.sliceId} for session ${sessionId}`);
+              }
+            }
+          } catch (syncErr) {
+            console.error('[AutoSync] Error checking link status:', syncErr.message);
+          }
+        }
+      }
+    }
+
     // Attach customer info
     const customer = await CustomerTransaction.findOne({ sessionId, vendorId });
 
@@ -621,15 +648,16 @@ export async function handleRazorpayWebhook(req, res) {
     const event = req.body.event;
     console.log(`[Razorpay Webhook] Received event: ${event}`);
 
-    // Razorpay sends 'qr_code.credited' or 'payment.captured'
+    // Razorpay sends 'payment_link.paid', 'qr_code.credited', or 'payment.captured'
     const payload = req.body.payload || {};
     const payment = payload.payment?.entity || {};
     const qrEntity = payload.qr_code?.entity || {};
+    const plinkEntity = payload.payment_link?.entity || {};
 
-    const notes = payment.notes || qrEntity.notes || {};
+    const notes = payment.notes || qrEntity.notes || plinkEntity.notes || {};
     const sessionId = notes.sessionId;
     const sliceId = notes.sliceId;
-    const qrId = qrEntity.id || payment.qr_code_id;
+    const qrId = qrEntity.id || payment.qr_code_id || plinkEntity.id;
     const paymentId = payment.id || `RZP-${Date.now()}`;
 
     let session = null;

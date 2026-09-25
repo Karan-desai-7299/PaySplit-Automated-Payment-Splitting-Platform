@@ -50,7 +50,7 @@ export async function createSliceQrCode({
 }) {
   const active = getActiveGateway();
 
-  // ─── 1. RAZORPAY UPI DYNAMIC QR ──────────────────────────────────────────
+  // ─── 1. RAZORPAY UPI DYNAMIC QR / PAYMENT LINK ──────────────────────────
   if (active.type === 'RAZORPAY') {
     try {
       const authHeader =
@@ -59,22 +59,24 @@ export async function createSliceQrCode({
           `${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`
         ).toString('base64');
 
+      const refId = `${sessionId.replace(/[^a-zA-Z0-9]/g, '')}_${sliceIndex}_${Date.now()}`.substring(0, 40);
+
       const payload = {
-        type: 'upi_qr',
-        name: `${vendor.businessName || vendor.payeeName || 'PaySplit'} Portion ${sliceIndex}`,
-        usage: 'single_use',
-        fixed_amount: true,
-        payment_amount: Math.round(Number(amount) * 100), // paise
+        amount: Math.round(Number(amount) * 100), // in paise
+        currency: 'INR',
+        accept_partial: false,
         description: `Bill ${sessionId} - QR ${sliceIndex} of ${totalSlices}`,
+        reference_id: refId,
         notes: {
           sessionId,
           sliceId,
           sliceIndex: String(sliceIndex),
           transactionRef,
         },
+        reminder_enable: false,
       };
 
-      const res = await fetch('https://api.razorpay.com/v1/payments/qr_codes', {
+      const res = await fetch('https://api.razorpay.com/v1/payment_links', {
         method: 'POST',
         headers: {
           Authorization: authHeader,
@@ -85,19 +87,25 @@ export async function createSliceQrCode({
 
       const data = await res.json();
 
-      if (res.ok && (data.image_url || data.id)) {
-        console.log(`[Razorpay QR] Generated QR ${data.id} for ₹${amount} (Session ${sessionId})`);
+      if (res.ok && data.short_url) {
+        console.log(`[Razorpay PaymentLink] Created ${data.id} (${data.short_url}) for ₹${amount}`);
+        const qrCodeDataUrl = await QRCode.toDataURL(data.short_url, {
+          width: 380,
+          margin: 2,
+          color: { dark: '#0f172a', light: '#ffffff' },
+        });
+
         return {
           gateway: 'RAZORPAY',
           gatewayQrId: data.id,
-          qrCodeDataUrl: data.image_url,
-          upiString: data.image_url || `upi://pay?pa=${vendor.upiId}&am=${amount}`,
+          qrCodeDataUrl,
+          upiString: data.short_url,
         };
       } else {
-        console.error('[Razorpay QR Error] Response:', data);
+        console.error('[Razorpay PaymentLink Error] Response:', data);
       }
     } catch (err) {
-      console.error('[Razorpay QR Exception]:', err.message);
+      console.error('[Razorpay PaymentLink Exception]:', err.message);
     }
   }
 
