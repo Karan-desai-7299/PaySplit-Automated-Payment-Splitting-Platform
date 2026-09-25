@@ -78,10 +78,10 @@ router.get('/test-razorpay', async (req, res) => {
 
   const authHeader = 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64');
   
-  // 1. Try QR codes API
+  // 1. Try QR codes API (/v1/qr_codes)
   let qrResult = null;
   try {
-    const qrRes = await fetch('https://api.razorpay.com/v1/payments/qr_codes', {
+    const qrRes = await fetch('https://api.razorpay.com/v1/qr_codes', {
       method: 'POST',
       headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
       body: JSON.stringify({
