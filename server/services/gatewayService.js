@@ -10,28 +10,10 @@ import QRCode from 'qrcode';
  */
 
 export function getActiveGateway() {
-  if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
-    return {
-      type: 'RAZORPAY',
-      name: 'Razorpay UPI Dynamic QR',
-      configured: true,
-      keyId: process.env.RAZORPAY_KEY_ID ? `${process.env.RAZORPAY_KEY_ID.substring(0, 8)}...` : '',
-    };
-  }
-
-  if (process.env.CASHFREE_APP_ID && process.env.CASHFREE_SECRET_KEY) {
-    return {
-      type: 'CASHFREE',
-      name: 'Cashfree Dynamic UPI QR',
-      configured: true,
-      env: process.env.CASHFREE_ENV || 'sandbox',
-    };
-  }
-
   return {
     type: 'DIRECT_UPI',
-    name: 'Standard Direct UPI (No Gateway Keys Set)',
-    configured: false,
+    name: 'Direct Vendor UPI Split Engine',
+    configured: true,
   };
 }
 
